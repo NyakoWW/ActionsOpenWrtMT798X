@@ -666,9 +666,20 @@ jobs:
         make defconfig    # 编译前强制同步配置
 
         # ---- 阶段 1：编译内核，失败时保留完整日志 ----
-        if ! make target/linux/compile -j"$(nproc)" 2>&1 | tee kernel_build.log; then
-          make target/linux/compile -j1 V=s 2>&1 | tee kernel_build.log
+        set +e
+        make target/linux/compile -j"$(nproc)" 2>&1 | tee kernel_build.log
+        KSTATUS=${PIPESTATUS[0]}
+        if [ "$KSTATUS" -ne 0 ]; then
+          echo "===== 并行编译失败(exit=$KSTATUS),单线程 V=s 重跑 ====="
+          make target/linux/compile -j1 V=s 2>&1 | tee kernel_build_verbose.log
+          KSTATUS=${PIPESTATUS[0]}
+          if [ "$KSTATUS" -ne 0 ]; then
+            echo "===== 内核编译仍失败,日志尾部 ====="
+            tail -150 kernel_build_verbose.log
+            exit 1
+          fi
         fi
+        set -e
     
         # ---- 阶段 2：正确地定位 vmlinux（任意深度）----
         # ---- 阶段 2：定位并固定 blob ----
